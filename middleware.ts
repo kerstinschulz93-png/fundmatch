@@ -1,32 +1,19 @@
-import { withAuth } from 'next-auth/middleware'
-import { NextResponse } from 'next/server'
+import { type NextRequest } from 'next/server'
+import { updateSession } from '@/lib/supabase/middleware'
 
-export default withAuth(
-  function middleware(req) {
-    return NextResponse.next()
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        // Protect dashboard routes
-        if (req.nextUrl.pathname.startsWith('/dashboard') ||
-            req.nextUrl.pathname.startsWith('/tracker') ||
-            req.nextUrl.pathname.startsWith('/profile') ||
-            req.nextUrl.pathname.startsWith('/settings')) {
-          return !!token
-        }
-        return true
-      },
-    },
-  }
-)
+export async function middleware(request: NextRequest) {
+  return await updateSession(request)
+}
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/tracker/:path*',
-    '/profile/:path*',
-    '/settings/:path*',
-    '/onboarding/:path*',
+    /*
+     * Match all request paths except for:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public files (e.g. images)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

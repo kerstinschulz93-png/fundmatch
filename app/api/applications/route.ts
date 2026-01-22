@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
 import prisma from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get Prisma user by email
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
     const applications = await prisma.application.findMany({
-      where: { userId: session.user.id },
+      where: { userId: dbUser.id },
       include: { opportunity: true },
       orderBy: { updatedAt: 'desc' },
     })
@@ -29,10 +38,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get Prisma user by email
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -61,7 +80,7 @@ export async function POST(request: NextRequest) {
     const existing = await prisma.application.findUnique({
       where: {
         userId_opportunityId: {
-          userId: session.user.id,
+          userId: dbUser.id,
           opportunityId,
         },
       },
@@ -76,7 +95,7 @@ export async function POST(request: NextRequest) {
 
     const application = await prisma.application.create({
       data: {
-        userId: session.user.id,
+        userId: dbUser.id,
         opportunityId,
         notes,
         status: 'SAVED',

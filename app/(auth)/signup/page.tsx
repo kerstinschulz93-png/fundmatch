@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
+  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,38 +52,43 @@ export default function SignUpPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Signup failed')
-      }
-
-      // Sign in after successful signup
-      const result = await signIn('credentials', {
+      // Sign up with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        redirect: false,
+        options: {
+          data: {
+            full_name: name,
+          },
+        },
       })
 
-      if (result?.error) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: 'Account created but login failed. Please try logging in.',
+      if (error) {
+        throw error
+      }
+
+      if (data.user) {
+        // Create user in our database via API
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            name,
+          }),
         })
-        router.push('/login')
-      } else {
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create user profile')
+        }
+
         toast({
           title: 'Welcome to FundMatch!',
-          description: 'Let\'s set up your profile.',
+          description: "Let's set up your profile.",
         })
         router.push('/onboarding')
+        router.refresh()
       }
     } catch (error) {
       toast({
@@ -95,8 +101,21 @@ export default function SignUpPage() {
     }
   }
 
-  const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/onboarding' })
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+      },
+    })
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to sign in with Google',
+      })
+    }
   }
 
   return (

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
 import prisma from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.email) {
+    if (!user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -28,14 +28,14 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Update user name if provided
-    const user = await prisma.user.update({
-      where: { email: session.user.email },
+    const dbUser = await prisma.user.update({
+      where: { email: user.email },
       data: { name },
     })
 
     // Upsert founder profile
     const profile = await prisma.founderProfile.upsert({
-      where: { userId: user.id },
+      where: { userId: dbUser.id },
       update: {
         companyName,
         stage,
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         onboardingCompleted: true,
       },
       create: {
-        userId: user.id,
+        userId: dbUser.id,
         companyName,
         stage,
         industries,

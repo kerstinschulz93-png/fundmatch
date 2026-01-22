@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -94,11 +94,11 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const { data: session, update } = useSession()
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [formData, setFormData] = useState<FormData>({
-    name: session?.user?.name || '',
+    name: user?.user_metadata?.full_name || '',
     location: '',
     companyName: '',
     stage: 'IDEA',
@@ -177,17 +177,13 @@ export default function OnboardingPage() {
         throw new Error('Failed to save profile')
       }
 
-      // Update session with new name if changed
-      if (formData.name !== session?.user?.name) {
-        await update({ name: formData.name })
-      }
-
       toast({
         title: 'Profile Complete!',
         description: 'Welcome to FundMatch. Let\'s find you some funding opportunities!',
       })
 
       router.push('/dashboard')
+      router.refresh()
     } catch (error) {
       toast({
         variant: 'destructive',

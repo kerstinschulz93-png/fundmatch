@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,7 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const supabase = createClient()
 
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
 
@@ -33,18 +34,16 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await signIn('credentials', {
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        redirect: false,
-        callbackUrl,
       })
 
-      if (result?.error) {
+      if (error) {
         toast({
           variant: 'destructive',
           title: 'Login failed',
-          description: 'Invalid email or password',
+          description: error.message || 'Invalid email or password',
         })
       } else {
         router.push(callbackUrl)
@@ -61,8 +60,21 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl })
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${callbackUrl}`,
+      },
+    })
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to sign in with Google',
+      })
+    }
   }
 
   return (

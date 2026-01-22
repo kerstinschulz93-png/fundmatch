@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
 import prisma from '@/lib/db'
 
 export async function GET(
@@ -8,16 +7,26 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get Prisma user by email
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     const application = await prisma.application.findFirst({
       where: {
         id: params.id,
-        userId: session.user.id,
+        userId: dbUser.id,
       },
       include: { opportunity: true },
     })
@@ -44,10 +53,20 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get Prisma user by email
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     const body = await request.json()
@@ -57,7 +76,7 @@ export async function PATCH(
     const existing = await prisma.application.findFirst({
       where: {
         id: params.id,
-        userId: session.user.id,
+        userId: dbUser.id,
       },
     })
 
@@ -95,17 +114,27 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.id) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Get Prisma user by email
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email! },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Try to find by application ID first
     let application = await prisma.application.findFirst({
       where: {
         id: params.id,
-        userId: session.user.id,
+        userId: dbUser.id,
       },
     })
 
@@ -114,7 +143,7 @@ export async function DELETE(
       application = await prisma.application.findFirst({
         where: {
           opportunityId: params.id,
-          userId: session.user.id,
+          userId: dbUser.id,
         },
       })
     }

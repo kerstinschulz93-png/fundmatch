@@ -1,33 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { createClient } from '@/lib/supabase/server'
 import prisma from '@/lib/db'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.email) {
+    if (!user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+    const dbUser = await prisma.user.findUnique({
+      where: { email: user.email },
       include: { founderProfile: true },
     })
 
-    if (!user) {
+    if (!dbUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     return NextResponse.json({
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
+        id: dbUser.id,
+        name: dbUser.name,
+        email: dbUser.email,
+        image: dbUser.image,
       },
-      profile: user.founderProfile,
+      profile: dbUser.founderProfile,
     })
   } catch (error) {
     console.error('Get profile error:', error)
@@ -40,9 +40,10 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!session?.user?.email) {
+    if (!user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -63,14 +64,14 @@ export async function PUT(request: NextRequest) {
     } = body
 
     // Update user name if provided
-    const user = await prisma.user.update({
-      where: { email: session.user.email },
+    const dbUser = await prisma.user.update({
+      where: { email: user.email },
       data: { name },
     })
 
     // Upsert founder profile
     const profile = await prisma.founderProfile.upsert({
-      where: { userId: user.id },
+      where: { userId: dbUser.id },
       update: {
         companyName,
         stage,
@@ -85,7 +86,7 @@ export async function PUT(request: NextRequest) {
         demographics,
       },
       create: {
-        userId: user.id,
+        userId: dbUser.id,
         companyName,
         stage,
         industries,

@@ -15,8 +15,8 @@ A platform connecting underrepresented founders with funding opportunities.
 
 - **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
 - **UI Components**: shadcn/ui (Radix UI primitives)
-- **Authentication**: NextAuth.js
-- **Database**: PostgreSQL with Prisma ORM
+- **Backend**: Supabase (Auth, Database, Storage, Real-time)
+- **Database**: PostgreSQL with Supabase + Prisma ORM
 - **Deployment**: Vercel (recommended)
 
 ## Getting Started
@@ -24,7 +24,7 @@ A platform connecting underrepresented founders with funding opportunities.
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL database
+- Supabase account (free tier available at [supabase.com](https://supabase.com))
 - npm or yarn
 
 ### Installation
@@ -45,11 +45,13 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with your configuration:
+Edit `.env` with your Supabase configuration (from your Supabase project settings):
 ```
-DATABASE_URL="postgresql://user:password@localhost:5432/fundmatch"
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret-key"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+DATABASE_URL="postgresql://postgres:[password]@db.your-project.supabase.co:5432/postgres"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 4. Set up the database:
@@ -81,8 +83,10 @@ fundmatch/
 │   ├── opportunities/    # Opportunity-related components
 │   └── tracker/          # Kanban tracker components
 ├── lib/                   # Utility functions
-│   ├── auth.ts           # NextAuth configuration
-│   ├── db.ts             # Prisma client
+│   ├── supabase/         # Supabase client configuration
+│   │   ├── client.ts     # Browser client
+│   │   └── server.ts     # Server client
+│   ├── db.ts             # Prisma client (for migrations)
 │   ├── matching.ts       # Matching algorithm
 │   └── utils.ts          # Helper functions
 ├── prisma/               # Database schema and seeds
@@ -109,9 +113,11 @@ fundmatch/
 
 ## API Endpoints
 
-### Authentication
-- `POST /api/auth/signup` - Create account
-- `POST /api/auth/[...nextauth]` - NextAuth handlers
+### Authentication (via Supabase Client SDK)
+- `supabase.auth.signUp()` - Create account
+- `supabase.auth.signInWithPassword()` - Sign in
+- `supabase.auth.signOut()` - Sign out
+- `GET /api/auth/callback` - OAuth/magic link callback handler
 
 ### Profile
 - `GET /api/profile` - Get current user profile
@@ -135,16 +141,16 @@ fundmatch/
 
 1. Push your code to GitHub
 2. Import the project to Vercel
-3. Configure environment variables
+3. Configure environment variables (Supabase keys from your project dashboard)
 4. Deploy
 
-### Database
+### Supabase Setup
 
-For production, use a hosted PostgreSQL service:
-- [Supabase](https://supabase.com)
-- [Neon](https://neon.tech)
-- [Railway](https://railway.app)
-- [PlanetScale](https://planetscale.com) (MySQL)
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Copy your project URL and API keys from Project Settings > API
+3. Enable the authentication providers you need (Email, Google, etc.)
+4. Run database migrations: `npm run db:push`
+5. Configure Row-Level Security policies in the Supabase dashboard
 
 ## Contributing
 

@@ -20,7 +20,7 @@
 
 ## Overview
 
-FundMatch is a full-stack web application designed to connect underrepresented founders with funding opportunities. The platform uses a modern JAMstack architecture built on Next.js 14, leveraging server-side rendering, API routes, and a PostgreSQL database.
+FundMatch is a full-stack web application designed to connect underrepresented founders with funding opportunities. The platform uses a modern JAMstack architecture built on Next.js 14 and Supabase, leveraging server-side rendering, API routes, and a PostgreSQL database with real-time capabilities.
 
 ### Key Design Principles
 
@@ -94,23 +94,21 @@ FundMatch is a full-stack web application designed to connect underrepresented f
 │                                                                              │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────────┐    │
 │  │   Auth Service │  │ Matching       │  │  Data Access Layer         │    │
-│  │   (NextAuth)   │  │ Algorithm      │  │  (Prisma ORM)              │    │
+│  │ (Supabase Auth)│  │ Algorithm      │  │  (Supabase Client + Prisma)│    │
 │  │                │  │                │  │                            │    │
 │  │  • JWT Tokens  │  │  • Profile     │  │  • Type-safe queries       │    │
-│  │  • OAuth 2.0   │  │    Analysis    │  │  • Transactions            │    │
-│  │  • Sessions    │  │  • Scoring     │  │  • Migrations              │    │
-│  │  • Credentials │  │  • Ranking     │  │  • Connection pooling      │    │
+│  │  • OAuth 2.0   │  │    Analysis    │  │  • Real-time subscriptions │    │
+│  │  • Sessions    │  │  • Scoring     │  │  • Row-level security      │    │
+│  │  • Magic Links │  │  • Ranking     │  │  • Connection pooling      │    │
 │  └────────────────┘  └────────────────┘  └────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            DATA LAYER                                        │
+│                            DATA LAYER (SUPABASE)                             │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                    PostgreSQL Database                               │   │
-│  │                   (Supabase / Neon / Railway)                       │   │
-│  │                                                                      │   │
 │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │   │
 │  │  │   Users     │ │  Profiles   │ │Opportunities│ │Applications │   │   │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │   │
@@ -118,6 +116,13 @@ FundMatch is a full-stack web application designed to connect underrepresented f
 │  │  │  Sessions   │ │  Accounts   │ │  Resources  │ │   Stories   │   │   │
 │  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌─────────────────┐   │
+│  │   Supabase Auth      │  │   Supabase Storage   │  │   Real-time     │   │
+│  │  • User management   │  │  • Document uploads  │  │  • Live updates │   │
+│  │  • OAuth providers   │  │  • Profile images    │  │  • Subscriptions│   │
+│  │  • Row-level security│  │  • Secure URLs       │  │  • Presence     │   │
+│  └──────────────────────┘  └──────────────────────┘  └─────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -154,24 +159,28 @@ FundMatch is a full-stack web application designed to connect underrepresented f
 
 | Technology | Purpose | Version |
 |------------|---------|---------|
+| Supabase | Backend-as-a-Service | Latest |
 | Next.js API Routes | REST API | 14.1.0 |
-| NextAuth.js | Authentication | 4.24.6 |
-| Prisma | ORM & Database Toolkit | 5.10.0 |
-| bcryptjs | Password Hashing | 2.4.3 |
+| Supabase Auth | Authentication | Latest |
+| Supabase Client | Database & Real-time | Latest |
+| Prisma | Schema Management & Migrations | 5.10.0 |
 
-### Database
+### Database & Storage
 
 | Technology | Purpose |
 |------------|---------|
-| PostgreSQL | Primary Database |
-| Prisma Client | Database Access |
+| Supabase PostgreSQL | Primary Database |
+| Supabase Auth | User Authentication & Management |
+| Supabase Storage | File Storage (documents, images) |
+| Supabase Realtime | Live Subscriptions |
+| Row-Level Security | Data Access Control |
 
 ### Infrastructure
 
 | Service | Purpose |
 |---------|---------|
 | Vercel | Hosting & Deployment |
-| Supabase/Neon | Managed PostgreSQL |
+| Supabase | Database, Auth, Storage, Real-time |
 | GitHub | Version Control |
 
 ---
@@ -232,8 +241,11 @@ app/api/
 
 ```
 lib/
-├── auth.ts                 # Authentication configuration
-├── db.ts                   # Database client singleton
+├── supabase/
+│   ├── client.ts           # Supabase browser client
+│   ├── server.ts           # Supabase server client
+│   └── middleware.ts       # Supabase auth middleware
+├── db.ts                   # Prisma client (for migrations/complex queries)
 ├── matching.ts             # Matching algorithm
 └── utils.ts                # Utility functions
 ```
@@ -243,6 +255,7 @@ lib/
 - Data transformation
 - Algorithm execution
 - Cross-cutting concerns
+- Supabase client management
 
 ### 4. Data Access Layer
 
@@ -422,58 +435,72 @@ CREATE INDEX idx_applications_status ON applications(status);
 
 ## Authentication & Authorization
 
-### Authentication Flow
+### Authentication Flow (Supabase Auth)
 
 ```
 ┌──────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────┐
-│  Client  │     │   NextAuth   │     │   Provider   │     │ Database │
-└────┬─────┘     └──────┬───────┘     └──────┬───────┘     └────┬─────┘
-     │                  │                    │                  │
+│  Client  │     │ Supabase Auth│     │OAuth Provider│     │ Supabase │
+└────┬─────┘     └──────┬───────┘     └──────┬───────┘     │    DB    │
+     │                  │                    │             └────┬─────┘
      │  Login Request   │                    │                  │
      │─────────────────▶│                    │                  │
      │                  │                    │                  │
-     │                  │  Credentials Auth  │                  │
-     │                  │───────────────────▶│                  │
-     │                  │                    │                  │
-     │                  │    OR OAuth Flow   │                  │
+     │                  │  Email/Password    │                  │
+     │                  │  OR Magic Link     │                  │
+     │                  │  OR OAuth Flow     │                  │
      │                  │───────────────────▶│                  │
      │                  │                    │                  │
      │                  │  User Data         │                  │
      │                  │◀───────────────────│                  │
      │                  │                    │                  │
-     │                  │  Create/Update User│                  │
+     │                  │  Create/Update User (auth.users)      │
      │                  │─────────────────────────────────────▶│
      │                  │                    │                  │
      │                  │  Create Session    │                  │
      │                  │─────────────────────────────────────▶│
      │                  │                    │                  │
-     │  JWT Token       │                    │                  │
+     │  JWT + Refresh   │                    │                  │
      │◀─────────────────│                    │                  │
      │                  │                    │                  │
 ```
 
 ### Supported Authentication Methods
 
-1. **Email/Password (Credentials)**
-   - Password hashed with bcrypt (12 rounds)
-   - Email verification (optional)
-   - Password reset flow (future)
+1. **Email/Password**
+   - Password hashed by Supabase (bcrypt)
+   - Email verification with confirmation link
+   - Password reset flow via email
 
-2. **Google OAuth 2.0**
-   - Social login
-   - Account linking
-   - Profile sync
+2. **Magic Link**
+   - Passwordless authentication
+   - Email-based one-time login links
+   - Configurable expiration
 
-### JWT Token Structure
+3. **OAuth Providers**
+   - Google OAuth 2.0
+   - GitHub (optional)
+   - Additional providers as needed
+
+### Supabase Session Structure
 
 ```typescript
-interface JWT {
-  id: string;          // User ID
-  email: string;       // User email
-  name: string;        // User name
-  picture?: string;    // Profile image
-  iat: number;         // Issued at
-  exp: number;         // Expiration
+interface Session {
+  access_token: string;     // JWT for API access
+  refresh_token: string;    // For token refresh
+  expires_in: number;       // Token expiration (seconds)
+  expires_at: number;       // Expiration timestamp
+  user: {
+    id: string;             // User UUID
+    email: string;          // User email
+    email_confirmed_at: string;
+    user_metadata: {
+      name?: string;
+      avatar_url?: string;
+    };
+    app_metadata: {
+      provider: string;
+    };
+  };
 }
 ```
 
@@ -495,6 +522,21 @@ interface JWT {
 
 ```typescript
 // middleware.ts
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+
+export async function middleware(request) {
+  const supabase = createServerClient(/* config */)
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // Redirect unauthenticated users to login
+  if (!session && isProtectedRoute(request.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+
+  return NextResponse.next()
+}
+
 export const config = {
   matcher: [
     '/dashboard/:path*',
@@ -506,20 +548,57 @@ export const config = {
 }
 ```
 
+### Row-Level Security (RLS)
+
+Supabase enforces data access at the database level using RLS policies:
+
+```sql
+-- Users can only read their own profile
+CREATE POLICY "Users can view own profile"
+  ON founder_profiles FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- Users can only update their own profile
+CREATE POLICY "Users can update own profile"
+  ON founder_profiles FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- Users can only access their own applications
+CREATE POLICY "Users can manage own applications"
+  ON applications FOR ALL
+  USING (auth.uid() = user_id);
+
+-- Everyone can read active opportunities
+CREATE POLICY "Anyone can view active opportunities"
+  ON opportunities FOR SELECT
+  USING (is_active = true);
+```
+
 ---
 
 ## API Design
 
 ### RESTful Endpoints
 
-#### Authentication
+#### Authentication (Supabase Auth)
+
+Authentication is handled directly via Supabase client SDK:
+
+| Method | Supabase Function | Description |
+|--------|-------------------|-------------|
+| - | `supabase.auth.signUp()` | Create new account |
+| - | `supabase.auth.signInWithPassword()` | Sign in with email/password |
+| - | `supabase.auth.signInWithOtp()` | Magic link sign in |
+| - | `supabase.auth.signInWithOAuth()` | OAuth provider sign in |
+| - | `supabase.auth.signOut()` | Sign out |
+| - | `supabase.auth.getSession()` | Get current session |
+| - | `supabase.auth.onAuthStateChange()` | Listen for auth changes |
+
+#### Auth Callback Route
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/signup` | Create new account |
-| POST | `/api/auth/signin` | Sign in (NextAuth) |
-| POST | `/api/auth/signout` | Sign out (NextAuth) |
-| GET | `/api/auth/session` | Get current session |
+| GET | `/api/auth/callback` | Handle OAuth/magic link redirects |
 
 #### Profile
 
@@ -779,14 +858,21 @@ App
 │  │  • User Profile                                      │   │
 │  │  • Opportunities List                                │   │
 │  │  • Applications                                      │   │
-│  │  • Fetched via Prisma in Server Components          │   │
+│  │  • Fetched via Supabase in Server Components        │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │              AUTH STATE (NextAuth)                   │   │
-│  │  • Session                                           │   │
+│  │              AUTH STATE (Supabase Auth)              │   │
+│  │  • Session (access_token, refresh_token)            │   │
 │  │  • User                                              │   │
-│  │  • Managed by SessionProvider                        │   │
+│  │  • Managed by Supabase client + onAuthStateChange   │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              REAL-TIME STATE (Supabase Realtime)     │   │
+│  │  • Application status updates                        │   │
+│  │  • New opportunity notifications                     │   │
+│  │  • Managed via Supabase subscriptions               │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -814,10 +900,22 @@ App
 
 ```typescript
 // app/(dashboard)/dashboard/page.tsx
+import { createServerClient } from '@/lib/supabase/server'
+
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  const opportunities = await prisma.opportunity.findMany({...});
-  const applications = await prisma.application.findMany({...});
+  const supabase = createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: opportunities } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('is_active', true)
+    .limit(10);
+
+  const { data: applications } = await supabase
+    .from('applications')
+    .select('*, opportunity:opportunities(*)')
+    .eq('user_id', user.id);
 
   return <Dashboard data={{ user, opportunities, applications }} />;
 }
@@ -829,18 +927,53 @@ export default async function DashboardPage() {
 // components/opportunities/save-button.tsx
 'use client';
 
+import { createBrowserClient } from '@/lib/supabase/client'
+
 export function SaveButton({ opportunityId }) {
   const [isSaved, setIsSaved] = useState(false);
+  const supabase = createBrowserClient();
 
   const handleSave = async () => {
-    await fetch('/api/applications', {
-      method: 'POST',
-      body: JSON.stringify({ opportunityId })
-    });
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase
+      .from('applications')
+      .insert({ user_id: user.id, opportunity_id: opportunityId, status: 'SAVED' });
     setIsSaved(true);
   };
 
   return <Button onClick={handleSave}>Save</Button>;
+}
+```
+
+#### Real-time Subscriptions
+
+```typescript
+// components/tracker/kanban-board.tsx
+'use client';
+
+import { createBrowserClient } from '@/lib/supabase/client'
+
+export function KanbanBoard({ userId }) {
+  const [applications, setApplications] = useState([]);
+  const supabase = createBrowserClient();
+
+  useEffect(() => {
+    // Subscribe to changes on user's applications
+    const channel = supabase
+      .channel('applications')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'applications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          // Handle real-time updates
+          setApplications(current => updateApplications(current, payload));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel) };
+  }, [userId]);
+
+  return <Board applications={applications} />;
 }
 ```
 
@@ -876,15 +1009,26 @@ export function SaveButton({ opportunityId }) {
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    SUPABASE / NEON                           │
+│                        SUPABASE                              │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │               PostgreSQL Database                    │   │
-│  │  • Connection pooling (PgBouncer)                   │   │
-│  │  • Automatic backups                                │   │
-│  │  • Point-in-time recovery                           │   │
-│  │  • Read replicas (if needed)                        │   │
-│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌───────────────────────┐  ┌───────────────────────────┐  │
+│  │   PostgreSQL Database │  │      Supabase Auth        │  │
+│  │  • Connection pooling │  │  • User management        │  │
+│  │  • Automatic backups  │  │  • OAuth providers        │  │
+│  │  • Point-in-time      │  │  • Magic links            │  │
+│  │    recovery           │  │  • JWT token management   │  │
+│  │  • Row-level security │  │  • Session handling       │  │
+│  └───────────────────────┘  └───────────────────────────┘  │
+│                                                              │
+│  ┌───────────────────────┐  ┌───────────────────────────┐  │
+│  │   Supabase Storage    │  │    Supabase Realtime      │  │
+│  │  • Document uploads   │  │  • WebSocket connections  │  │
+│  │  • Profile images     │  │  • Database changes       │  │
+│  │  • Secure signed URLs │  │  • Broadcast messages     │  │
+│  │  • CDN delivery       │  │  • Presence tracking      │  │
+│  └───────────────────────┘  └───────────────────────────┘  │
+│                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -892,11 +1036,17 @@ export function SaveButton({ opportunityId }) {
 
 ```bash
 # Production Environment Variables
-DATABASE_URL="postgresql://..."      # Connection pooling URL
-NEXTAUTH_URL="https://fundmatch.com"
-NEXTAUTH_SECRET="<random-32-bytes>"
-GOOGLE_CLIENT_ID="..."
-GOOGLE_CLIENT_SECRET="..."
+
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"  # Server-side only
+
+# Database (for Prisma migrations)
+DATABASE_URL="postgresql://postgres:[password]@db.your-project.supabase.co:5432/postgres"
+
+# Application
+NEXT_PUBLIC_APP_URL="https://fundmatch.com"
 ```
 
 ### CI/CD Pipeline
@@ -919,12 +1069,13 @@ GOOGLE_CLIENT_SECRET="..."
 
 ## Security Considerations
 
-### Authentication Security
+### Authentication Security (Supabase Auth)
 
-- **Password Hashing**: bcrypt with 12 salt rounds
-- **JWT Security**: HttpOnly cookies, secure flag, SameSite=Lax
-- **Session Management**: Short-lived JWTs, automatic refresh
-- **OAuth Security**: State parameter validation, PKCE (future)
+- **Password Hashing**: bcrypt (managed by Supabase)
+- **JWT Security**: Signed JWTs with configurable expiration
+- **Session Management**: Access tokens + refresh tokens, automatic refresh
+- **OAuth Security**: PKCE enabled by default, state parameter validation
+- **Row-Level Security**: Database-level access control policies
 
 ### Data Protection
 
@@ -949,16 +1100,16 @@ demographics: {
 
 | Vulnerability | Mitigation |
 |---------------|------------|
-| Injection | Prisma ORM parameterized queries |
-| Broken Auth | NextAuth.js with JWT + secure cookies |
-| Sensitive Data | HTTPS, encrypted at rest |
+| Injection | Supabase client parameterized queries, Prisma ORM |
+| Broken Auth | Supabase Auth with JWT + Row-Level Security |
+| Sensitive Data | HTTPS, Supabase encryption at rest |
 | XXE | Not applicable (JSON only) |
-| Broken Access Control | Middleware + API authorization |
-| Security Misconfig | Environment variables, secure defaults |
+| Broken Access Control | RLS policies + middleware authorization |
+| Security Misconfig | Environment variables, Supabase secure defaults |
 | XSS | React escaping, input validation |
 | Insecure Deserialization | JSON.parse with validation |
 | Vulnerable Components | Regular npm audits |
-| Logging & Monitoring | Vercel logs, error tracking (future) |
+| Logging & Monitoring | Vercel logs, Supabase dashboard, error tracking |
 
 ---
 
@@ -1015,18 +1166,24 @@ return opportunities;
 
 ### Phase 2: AI-Powered Matching
 
+Supabase supports pgvector extension for AI embeddings:
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    AI MATCHING PIPELINE                      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Profile Text ──▶ OpenAI Embeddings ──▶ pgvector Storage    │
+│  Profile Text ──▶ OpenAI Embeddings ──▶ Supabase pgvector   │
 │                                                              │
-│  Opportunity Text ──▶ OpenAI Embeddings ──▶ pgvector Storage│
+│  Opportunity Text ──▶ OpenAI Embeddings ──▶ Supabase pgvector│
 │                                                              │
-│  Query: SELECT * FROM opportunities                          │
-│         ORDER BY profile_embedding <=> opportunity_embedding │
-│         LIMIT 10;                                            │
+│  -- Enable pgvector in Supabase                             │
+│  CREATE EXTENSION IF NOT EXISTS vector;                      │
+│                                                              │
+│  -- Similarity search                                        │
+│  SELECT * FROM opportunities                                 │
+│  ORDER BY embedding <=> profile_embedding                    │
+│  LIMIT 10;                                                   │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -1066,7 +1223,9 @@ fundmatch/
 ├── app/
 │   ├── (auth)/
 │   │   ├── login/page.tsx
-│   │   └── signup/page.tsx
+│   │   ├── signup/page.tsx
+│   │   └── auth/
+│   │       └── callback/route.ts    # Supabase auth callback
 │   ├── (dashboard)/
 │   │   ├── dashboard/page.tsx
 │   │   ├── opportunities/
@@ -1078,7 +1237,6 @@ fundmatch/
 │   │   ├── settings/page.tsx
 │   │   └── layout.tsx
 │   ├── api/
-│   │   ├── auth/[...nextauth]/route.ts
 │   │   ├── applications/route.ts
 │   │   ├── opportunities/route.ts
 │   │   └── profile/route.ts
@@ -1093,17 +1251,23 @@ fundmatch/
 │   ├── opportunities/
 │   ├── tracker/
 │   └── providers/
+│       └── supabase-provider.tsx  # Supabase client provider
 ├── lib/
-│   ├── auth.ts
-│   ├── db.ts
+│   ├── supabase/
+│   │   ├── client.ts          # Browser client
+│   │   ├── server.ts          # Server client
+│   │   └── middleware.ts      # Auth middleware helpers
+│   ├── db.ts                  # Prisma client (migrations)
 │   ├── matching.ts
 │   └── utils.ts
 ├── prisma/
 │   ├── schema.prisma
 │   └── seed.ts
+├── supabase/
+│   └── migrations/            # Supabase SQL migrations
 ├── types/
 │   ├── index.ts
-│   └── next-auth.d.ts
+│   └── supabase.ts            # Generated Supabase types
 ├── middleware.ts
 ├── package.json
 ├── tsconfig.json
@@ -1128,16 +1292,17 @@ fundmatch/
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `NEXTAUTH_URL` | Yes | Application URL |
-| `NEXTAUTH_SECRET` | Yes | JWT signing secret |
-| `GOOGLE_CLIENT_ID` | No | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | No | Google OAuth secret |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous/public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key (server-only) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (for Prisma) |
+| `NEXT_PUBLIC_APP_URL` | Yes | Application URL |
 | `OPENAI_API_KEY` | No | For AI matching (Phase 2) |
 | `RESEND_API_KEY` | No | For email notifications |
 
 ---
 
-*Document Version: 1.0*
+*Document Version: 1.1*
 *Last Updated: January 2025*
 *Architecture Review: Quarterly*
+*Backend: Supabase*

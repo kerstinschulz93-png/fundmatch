@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,7 +85,7 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const router = useRouter()
-  const { data: session, update } = useSession()
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [formData, setFormData] = useState<ProfileData>({
@@ -189,11 +189,6 @@ export default function ProfilePage() {
 
       if (!response.ok) {
         throw new Error('Failed to update profile')
-      }
-
-      // Update session with new name if changed
-      if (formData.name !== session?.user?.name) {
-        await update({ name: formData.name })
       }
 
       toast({

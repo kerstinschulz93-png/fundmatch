@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signOut } from 'next-auth/react'
+import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,6 +31,7 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
+  const { signOut } = useAuth()
 
   // Email preferences
   const [emailPrefs, setEmailPrefs] = useState({
@@ -63,7 +64,7 @@ export default function SettingsPage() {
           title: 'Account Deleted',
           description: 'Your account has been successfully deleted.',
         })
-        signOut({ callbackUrl: '/' })
+        signOut()
       } else {
         throw new Error('Failed to delete account')
       }

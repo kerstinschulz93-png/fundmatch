@@ -63,7 +63,7 @@ FundMatch is a full-stack web application designed to connect underrepresented f
 │  │                         MIDDLEWARE LAYER                              │  │
 │  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐         │  │
 │  │  │  Auth Guard    │  │  Rate Limiting │  │  Request       │         │  │
-│  │  │  (NextAuth)    │  │  (Future)      │  │  Validation    │         │  │
+│  │  │ (Supabase Auth)│  │  (Future)      │  │  Validation    │         │  │
 │  │  └────────────────┘  └────────────────┘  └────────────────┘         │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
 │                                                                              │
@@ -217,7 +217,7 @@ app/
 ```
 app/api/
 ├── auth/
-│   ├── [...nextauth]/      # NextAuth.js handlers
+│   ├── callback/           # OAuth/magic link callback handler
 │   └── signup/             # User registration
 ├── profile/
 │   ├── route.ts            # GET/PUT profile
@@ -1302,7 +1302,7 @@ fundmatch/
 
 ---
 
-*Document Version: 1.1*
-*Last Updated: January 2025*
+*Document Version: 1.2*
+*Last Updated: January 2026*
 *Architecture Review: Quarterly*
 *Backend: Supabase*
